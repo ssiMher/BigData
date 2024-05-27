@@ -62,7 +62,7 @@ public class TriangleCount {
                 }
             }
             result.set(triangleCount);
-            context.write(new Text("Triangle Count"), result);
+            context.write(new Text("a->b and b->a then a-b: TriangleSum = "), result);
         }
     }
 
