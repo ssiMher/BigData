@@ -15,17 +15,21 @@ import java.io.IOException;
 
 public class KMeansDriver {
     public static void main(String[] args) throws Exception {
+        if (args.length != 3) {
+            System.err.println("Usage: KMeansDriver <input_path> <output_path> <centroid_path>");
+            System.exit(-1);
+        }
+
         // 创建Hadoop配置对象
         Configuration conf = new Configuration();
         // 获取文件系统对象
         FileSystem fs = FileSystem.get(conf);
 
-        // 设置输入路径、输出路径、聚类中心路径和新聚类中心路径
+        // 设置输入路径、输出路径和聚类中心路径
         Path inputPath = new Path(args[0]);
         Path outputPath = new Path(args[1]);
         Path centroidPath = new Path(args[2]);
-        //Path newCentroidPath = new Path(args[3]);
-        Path backupCentroidPath = new Path(centroidPath.toString() + "_backup");
+        Path backupCentroidPath = new Path("/user/2024stu_02/initial_centers_backup.data");
 
         // 复制初始聚类中心文件以防止原始文件被删除
         copyFile(fs, centroidPath, backupCentroidPath);
@@ -45,20 +49,13 @@ public class KMeansDriver {
 
             // 创建一个新的MapReduce Job
             Job job = Job.getInstance(conf, "KMeans Clustering");
-            // 设置主类
             job.setJarByClass(KMeansDriver.class);
-            // 设置Mapper类
             job.setMapperClass(KMeansMapper.class);
-            // 设置Reducer类
             job.setReducerClass(KMeansReducer.class);
-            // 设置输出键的类型
             job.setOutputKeyClass(LongWritable.class);
-            // 设置输出值的类型
             job.setOutputValueClass(Text.class);
 
-            // 设置输入路径
             FileInputFormat.addInputPath(job, inputPath);
-            // 设置输出路径，按照迭代次数创建子目录
             FileOutputFormat.setOutputPath(job, iterationOutputPath);
 
             // 将聚类中心文件添加到分布式缓存中
@@ -68,24 +65,22 @@ public class KMeansDriver {
             job.getConfiguration().setBoolean("centroids.updated", false);
 
             // 等待作业完成
-            job.waitForCompletion(true);
+            boolean jobCompleted = job.waitForCompletion(true);
+            if (!jobCompleted) {
+                System.err.println("Job failed, terminating...");
+                System.exit(1);
+            }
 
             // 检查均值向量是否更新
             converged = !job.getConfiguration().getBoolean("centroids.updated", true);
 
             // 如果未收敛，准备下一次迭代
             if (!converged) {
-                // 删除旧聚类中心文件
                 fs.delete(backupCentroidPath, true);
-                // 重命名新聚类中心文件为旧聚类中心文件
-                //fs.rename(newCentroidPath, centroidPath);
-                // 增加迭代次数
+                fs.rename(new Path(iterationOutputPath, "new_centroids.data"), backupCentroidPath);
                 iteration++;
             }
         }
-
-        // 恢复原始聚类中心文件
-        //fs.rename(backupCentroidPath, centroidPath);
     }
 
     // 将一个文件的内容拷贝到另一个文件中
